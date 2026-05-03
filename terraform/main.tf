@@ -1,13 +1,13 @@
 terraform {
   required_version = ">= 1.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.0"  # Using 4.0 to avoid GPG key issue
+      version = "~> 4.0" # Using 4.0 to avoid GPG key issue
     }
   }
-  
+
   backend "local" {
     path = "terraform.tfstate"
   }
@@ -73,34 +73,59 @@ resource "aws_instance" "k3s_server" {
   key_name               = var.key_name
 
   user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    
-    # Update system
-    apt-get update -y
-    
-    # Install Docker
-    apt-get install -y docker.io
-    systemctl start docker
-    systemctl enable docker
-    
-    # Install kubectl
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-    
-    # Install K3s
-    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 644 --docker" sh -
-    
-    # Wait for K3s to be ready
-    sleep 30
-    
-    # Save kubeconfig for ubuntu user
-    mkdir -p /home/ubuntu/.kube
-    cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
-    chown -R ubuntu:ubuntu /home/ubuntu/.kube
-    
-    echo "K3s installation complete"
-  EOF
+  #!/bin/bash
+  # NO set -e — we handle errors manually
+
+  # Log everything
+  exec > /var/log/user-data.log 2>&1
+
+  echo "=== Starting setup ==="
+
+  # Update system
+  apt-get update -y
+
+  # Install Docker
+  apt-get install -y docker.io curl
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ubuntu
+
+  # Install K3s (without --docker flag, use containerd instead — more stable)
+  curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 644" sh -
+
+  # Wait for K3s to actually be ready
+  echo "Waiting for K3s..."
+  for i in $(seq 1 30); do
+    if systemctl is-active --quiet k3s; then
+      echo "K3s service is active"
+      break
+    fi
+    echo "Attempt $i/30 - waiting..."
+    sleep 10
+  done
+
+  # Wait for node to be Ready
+  for i in $(seq 1 20); do
+    if /usr/local/bin/kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get nodes | grep -q "Ready"; then
+      echo "Node is Ready!"
+      break
+    fi
+    echo "Node not ready yet... ($i/20)"
+    sleep 10
+  done
+
+  # Copy kubeconfig for ubuntu user
+  mkdir -p /home/ubuntu/.kube
+  cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+  chown -R ubuntu:ubuntu /home/ubuntu/.kube
+  chmod 600 /home/ubuntu/.kube/config
+
+  # Also set it globally
+  echo 'export KUBECONFIG=/home/ubuntu/.kube/config' >> /home/ubuntu/.bashrc
+  echo 'export KUBECONFIG=/home/ubuntu/.kube/config' >> /home/ubuntu/.profile
+
+  echo "=== Setup complete ==="
+EOF
 
   tags = {
     Name = "k3s-server"

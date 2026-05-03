@@ -158,6 +158,23 @@ jobs:
         run: |
           scp -o StrictHostKeyChecking=no -r k8s ubuntu@${{ env.EC2_IP }}:~/manifests
 
+      - name: Debug K3s status
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << 'ENDSSH'
+            echo "=== K3s service status ==="
+            sudo systemctl status k3s
+
+            echo "=== kubeconfig exists? ==="
+            ls -la /home/ubuntu/.kube/config
+            ls -la /etc/rancher/k3s/k3s.yaml
+
+            echo "=== kubectl version ==="
+            KUBECONFIG=/home/ubuntu/.kube/config kubectl version --client
+
+            echo "=== kubectl get nodes ==="
+            KUBECONFIG=/home/ubuntu/.kube/config kubectl get nodes
+          ENDSSH
+
       - name: Deploy from EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << 'ENDSSH'

@@ -129,7 +129,8 @@ jobs:
       - name: Wait for K3s
         run: |
           for i in {1..30}; do
-            if ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2.outputs.ip }} "kubectl get nodes" 2>/dev/null; then
+            if ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2.outputs.ip }} \
+              "sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get nodes" 2>/dev/null; then
               echo "✅ K3s ready"
               break
             fi
@@ -160,23 +161,25 @@ jobs:
       - name: Deploy from EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << 'ENDSSH'
-            echo "Testing kubectl with sudo..."
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml   # ← ADD THIS
+
+            echo "Testing kubectl..."
             sudo kubectl get nodes
-      
+
             echo "Applying Redis deployment..."
             sudo kubectl apply -f ~/manifests/redis-deployment.yaml --validate=false
-      
-           echo "Applying app deployment..."
-           sudo kubectl apply -f ~/manifests/app-deployment.yaml --validate=false
-      
-           echo "Waiting for pods..."
-           sleep 30
-      
-           echo "Current pods:"
-           sudo kubectl get pods -n urlshortener
-      
-           echo "Services:"
-           sudo kubectl get services -n urlshortener
+
+            echo "Applying app deployment..."
+            sudo kubectl apply -f ~/manifests/app-deployment.yaml --validate=false
+
+            echo "Waiting for pods..."
+            sleep 30
+
+            echo "Current pods:"
+            sudo kubectl get pods -n urlshortener
+
+            echo "Services:"
+            sudo kubectl get services -n urlshortener
           ENDSSH
 
       - name: Smoketest

@@ -9,7 +9,7 @@ on:
 env:
   DOCKER_IMAGE: url-shortener
   DOCKER_USERNAME: commanderk3
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-1
 
 jobs:
   test:

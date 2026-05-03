@@ -1,0 +1,5 @@
+node_modules/
+kubectl
+minikube-linux-amd64
+terraform_key.pem
+.env

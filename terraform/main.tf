@@ -1,13 +1,11 @@
 terraform {
+  required_version = ">= 1.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 4.0"  # Changed from 5.0 to 4.0
     }
   }
-  
-  # Disable provider signature verification
-  experiments = [provider_validation_disabled]
 }
 
 terraform {

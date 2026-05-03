@@ -85,8 +85,10 @@ async function startServer() {
       // Optional: Set expiry (e.g., 30 days)
       // await redisClient.expire(shortCode, 30 * 24 * 60 * 60);
 
+      const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
+
       res.json({
-        short_url: `http://localhost:${port}/${shortCode}`,
+        short_url: `${baseUrl}/${shortCode}`,
         short_code: shortCode,
         original_url: url
       });

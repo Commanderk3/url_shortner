@@ -154,6 +154,14 @@ jobs:
           echo "Checking K3s on EC2..."
           ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP "sudo kubectl get nodes"
 
+      - name: Update manifests with EC2 IP
+        run: |
+          sed -i "s|BASE_URL_PLACEHOLDER|http://${{ env.EC2_IP }}:30080|g" k8s/app-deployment.yaml
+
+      - name: Copy manifests to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no -r k8s ubuntu@${{ env.EC2_IP }}:~/manifests
+
       - name: Copy manifests to EC2
         run: |
           scp -o StrictHostKeyChecking=no -r k8s ubuntu@${{ env.EC2_IP }}:~/manifests

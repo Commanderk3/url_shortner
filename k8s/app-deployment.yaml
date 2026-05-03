@@ -49,7 +49,7 @@ metadata:
   name: url-shortener
   namespace: urlshortener
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: url-shortener
@@ -68,6 +68,8 @@ spec:
           value: "redis://redis-service:6379"
         - name: PORT
           value: "8000"
+        - name: BASE_URL
+          value: "BASE_URL_PLACEHOLDER"
         resources:
           requests:
             memory: "128Mi"

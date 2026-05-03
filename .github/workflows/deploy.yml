@@ -138,20 +138,20 @@ jobs:
             sleep 10
           done
 
-      - name: Setup kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          ssh ubuntu@${{ steps.ec2.outputs.ip }} "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config
-          sed -i "s|127.0.0.1|${{ steps.ec2.outputs.ip }}|g" ~/.kube/config
-          sed -i "s|server: https://.*|server: https://${{ steps.ec2.outputs.ip }}:6443|g" ~/.kube/config
-          # Add insecure-skip-tls-verify to bypass certificate error
-          sed -i '/certificate-authority-data/d' ~/.kube/config
-          sed -i '/insecure-skip-tls-verify: false/d' ~/.kube/config
-          sed -i '/server:/a\    insecure-skip-tls-verify: true' ~/.kube/config
-          chmod 600 ~/.kube/config
+           - name: Setup kubeconfig
+             run: |
+               mkdir -p ~/.kube
+               ssh ubuntu@${{ steps.ec2.outputs.ip }} "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config
+               sed -i "s|127.0.0.1|${{ steps.ec2.outputs.ip }}|g" ~/.kube/config
+               sed -i "s|server: https://.*|server: https://${{ steps.ec2.outputs.ip }}:6443|g" ~/.kube/config
+               # Add insecure-skip-tls-verify to bypass certificate error
+               sed -i '/certificate-authority-data/d' ~/.kube/config
+               sed -i '/insecure-skip-tls-verify: false/d' ~/.kube/config
+               sed -i '/server:/a\    insecure-skip-tls-verify: true' ~/.kube/config
+               chmod 600 ~/.kube/config
     
-    # Test connection
-    kubectl cluster-info
+               # Test connection
+               kubectl cluster-info
 
       - name: Update deployment image
         run: |

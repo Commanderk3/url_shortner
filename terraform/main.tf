@@ -126,4 +126,5 @@ output "app_url" {
 output "ssh_command" {
   value = "ssh -i ${var.key_name}.pem ubuntu@${aws_instance.k3s_server.public_ip}"
   description = "SSH command to connect to the instance"
+  sensitive = true  # Mark as sensitive because it contains key name
 }

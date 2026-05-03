@@ -100,17 +100,23 @@ jobs:
           echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
           echo "✅ EC2 IP: ${{ steps.ec2.outputs.ip }}"
       
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AWS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ steps.ec2.outputs.ip }} >> ~/.ssh/known_hosts
+
       - name: Wait for K3s to be ready
         run: |
           echo "Waiting for K3s to be ready..."
           sleep 60
-          for i in {1..30}; do
-            if ssh -o StrictHostKeyChecking=no -i ~/.ssh/temp_key ubuntu@${{ steps.ec2.outputs.ip }} "kubectl get nodes" 2>/dev/null; then
-              echo "✅ K3s is ready!"
+          for i in {1..20}; do
+           if ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2.outputs.ip }} "kubectl get nodes" 2>/dev/null; then echo "✅ K3s is ready!"
               break
-            fi
-            echo "Waiting for K3s... ($i/30)"
-            sleep 10
+           fi
+            echo "Waiting for K3s... ($i/20)"
+           sleep 10
           done
       
       - name: Setup kubeconfig

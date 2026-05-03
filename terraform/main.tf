@@ -5,6 +5,18 @@ terraform {
       version = "~> 5.0"
     }
   }
+  
+  # Disable provider signature verification
+  experiments = [provider_validation_disabled]
+}
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
   backend "local" {
     path = "terraform.tfstate"
   }

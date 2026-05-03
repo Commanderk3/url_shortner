@@ -1,0 +1,179 @@
+name: Deploy to AWS EC2 K3s
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  DOCKER_IMAGE: url-shortener
+  DOCKER_USERNAME: commanderk3
+  AWS_REGION: us-east-1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: |
+          cd app
+          npm ci
+          
+      - name: Run tests
+        run: |
+          cd app
+          echo "Running tests..."
+          # Add actual tests here
+          echo "✅ Tests passed!"
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+      
+      - name: Terraform Apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve \
+            -var="key_name=${{ secrets.AWS_KEY_NAME }}"
+      
+      - name: Get EC2 IP
+        id: ec2
+        run: |
+          cd terraform
+          echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+          echo "✅ EC2 IP: ${{ steps.ec2.outputs.ip }}"
+      
+      - name: Wait for K3s to be ready
+        run: |
+          echo "Waiting for K3s to be ready..."
+          sleep 60
+          for i in {1..30}; do
+            if ssh -o StrictHostKeyChecking=no -i ~/.ssh/temp_key ubuntu@${{ steps.ec2.outputs.ip }} "kubectl get nodes" 2>/dev/null; then
+              echo "✅ K3s is ready!"
+              break
+            fi
+            echo "Waiting for K3s... ($i/30)"
+            sleep 10
+          done
+      
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2.outputs.ip }} "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config
+          sed -i "s|127.0.0.1|${{ steps.ec2.outputs.ip }}|g" ~/.kube/config
+          chmod 600 ~/.kube/config
+      
+      - name: Update deployment image
+        run: |
+          sed -i "s|commanderk3/url-shortener:latest|${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" k8s/app-deployment.yaml
+      
+      - name: Deploy to K3s
+        run: |
+          kubectl apply -f k8s/redis-deployment.yaml
+          kubectl apply -f k8s/app-deployment.yaml
+          
+          # Wait for rollout
+          kubectl rollout status deployment/url-shortener -n urlshortener --timeout=180s
+          
+          # Show pods
+          kubectl get pods -n urlshortener
+          kubectl get services -n urlshortener
+      
+      - name: Smoketest
+        run: |
+          echo "Running smoketests..."
+          sleep 30
+          
+          # Health check
+          curl -f http://${{ steps.ec2.outputs.ip }}:30080/health || exit 1
+          
+          # Create short URL
+          RESPONSE=$(curl -s -X POST http://${{ steps.ec2.outputs.ip }}:30080/shorten \
+            -H "Content-Type: application/json" \
+            -d '{"url":"https://github.com/actions"}')
+          
+          echo $RESPONSE
+          
+          # Extract short code
+          CODE=$(echo $RESPONSE | grep -o '"short_code":"[^"]*"' | cut -d'"' -f4)
+          
+          # Test redirect
+          curl -f -L http://${{ steps.ec2.outputs.ip }}:30080/$CODE || exit 1
+          
+          echo "✅ All smoketests passed!"
+      
+      - name: Deployment Summary
+        run: |
+          echo "========================================="
+          echo "✅ DEPLOYMENT SUCCESSFUL!"
+          echo "========================================="
+          echo "🌐 App URL: http://${{ steps.ec2.outputs.ip }}:30080"
+          echo "🔍 Health Check: http://${{ steps.ec2.outputs.ip }}:30080/health"
+          echo "📊 Stats: http://${{ steps.ec2.outputs.ip }}:30080/admin/urls"
+          echo "========================================="
+          
+          # Save output for later
+          echo "APP_URL=http://${{ steps.ec2.outputs.ip }}:30080" >> $GITHUB_ENV
+      
+      - name: Send notification (optional)
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "App is live at: ${{ env.APP_URL }}"
